@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Media Launcher All-in-One</title>
+<style>
+  :root{--bg:#0f1114;--panel:#181818;--muted:#9aa6b2;--accent:#7c3aed;--card:#0b1220;--text:#e6eef8}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Arial,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column}
+
+  /* LOGIN PAGE */
+  #loginPage{display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;height:100vh}
+  #loginPage input{width:220px;padding:10px;border-radius:8px;border:0;background:#15181b;color:#fff}
+  #loginPage button{padding:10px 18px;border-radius:8px;border:0;background:#e50914;color:#fff;cursor:pointer;font-weight:bold}
+  #loginError{color:red;margin-top:10px}
+
+  /* CHOICE PAGE */
+  #choicePage{display:none;flex-direction:column;align-items:center;gap:20px;height:100vh;justify-content:center}
+  #choicePage button{padding:14px 30px;font-size:18px;border-radius:10px;border:0;background:#7c3aed;color:#fff;cursor:pointer;font-weight:bold}
+
+  /* PLAYER PAGE */
+  #playerPage{display:none;height:100vh;flex-direction:column}
+  header{display:flex;gap:12px;align-items:center;padding:12px;background:#0b0f13;border-bottom:1px solid rgba(255,255,255,0.02)}
+  header input{flex:1;min-width:160px;padding:8px;border-radius:8px;border:0;background:#0f1418;color:var(--text)}
+  #refreshBtn {
+    padding:8px 14px;
+    border-radius:8px;
+    border:0;
+    background:var(--accent);
+    color:#fff;
+    cursor:pointer;
+    font-weight:bold;
+  }
+  main{display:flex;flex:1;overflow:hidden;height:calc(100% - 52px)}
+  aside{width:25%;min-width:260px;background:var(--panel);padding:12px;overflow:auto;border-right:1px solid rgba(255,255,255,0.02)}
+  section{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:16px;gap:12px;overflow:auto}
+
+  .item{border-radius:10px;overflow:hidden;margin-bottom:12px;cursor:pointer;background:linear-gradient(180deg, rgba(255,255,255,0.01), transparent)}
+  .item img{width:100%;height:auto;aspect-ratio:16/9;display:block;object-fit:cover;background:#000}
+  .item-title{padding:6px;font-weight:600;text-align:center;background:#101216}
+
+  .season-block{margin:10px 0;padding:10px;border-radius:8px;background:#0d1114}
+  .season-title{font-weight:700;margin-bottom:6px;color:var(--muted)}
+  .episode{padding:8px;border-radius:6px;margin:6px 0;background:#121317;cursor:pointer}
+  .episode:hover{background:#1a1f24}
+  .back-btn{display:inline-block;margin-bottom:8px;padding:6px 10px;border-radius:8px;background:#222;color:var(--text);cursor:pointer;border:0}
+
+  video{width:100%;max-width:1100px;border-radius:10px;background:#000;box-shadow:0 8px 30px rgba(2,6,23,0.6)}
+  #currentTitle{margin:0;font-size:16px;color:var(--muted)}
+
+  /* Overlay for maintenance / initial check */
+  #overlay {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    color: #fff;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 12px;
+  }
+  #overlay h2 { margin: 0; font-size: 18px; }
+  #overlay p { margin: 0; color: #bbb; max-width: 90%; text-align:center; }
+
+  @media (max-width:900px){
+    aside{width:100%;height:260px;order:2;border-right:0;border-top:1px solid rgba(255,255,255,0.02)}
+    section{order:1;padding:10px}
+  }
+</style>
+</head>
+<body>
+
+<!-- Overlay shown immediately while we check update -->
+<div id="overlay">
+  <h2 id="overlayTitle">Checking server status...</h2>
+  <p id="overlayMsg">Please wait — verifying update file.</p>
+</div>
+
+<!-- LOGIN PAGE -->
+<div id="loginPage">
+  <h2>Login</h2>
+  <input type="text" id="username" placeholder="Username">
+  <input type="password" id="password" placeholder="Password">
+  <button id="loginBtn">Login</button>
+  <div id="loginError"></div>
+</div>
+
+<!-- CHOICE PAGE -->
+<div id="choicePage">
+  <h2>Select Content</h2>
+  <button id="moviesBtn">Movies</button>
+  <button id="seriesBtn">Series</button>
+</div>
+
+<!-- PLAYER PAGE -->
+<div id="playerPage">
+<header>
+  <input id="searchInput" placeholder="Search..." />
+  <button id="refreshBtn">⟳ Refresh</button>
+</header>
+<main>
+  <aside id="listPanel">Loading...</aside>
+  <section id="playerArea">
+    <video id="videoPlayer" controls>
+      <source id="playerSource" src="" type="video/mp4">
+      Your browser does not support the video element.
+    </video>
+    <div id="currentTitle">Select a movie or series</div>
+  </section>
+</main>
+</div>
+
+<script>
+/* --- CONFIG --- */
+const API_KEY='AIzaSyBkhQJ6VAROrat-Rnx1QARBUL68T7AUsJ4';
+const UPDATE_FOLDER='1tQy7fDIs-M6ip6tujQ7n_dUI-iz4JMg8';
+const DATA_URL = 'https://raw.githubusercontent.com/SahibdeepMe/media-data/refs/heads/main/data.json';
+
+/* --- ELEMENTS --- */
+const overlay = document.getElementById('overlay');
+const loginPage = document.getElementById('loginPage');
+const choicePage = document.getElementById('choicePage');
+const playerPage = document.getElementById('playerPage');
+const loginBtn = document.getElementById('loginBtn');
+const loginError = document.getElementById('loginError');
+const usernameInput = document.getElementById('username');
+const passwordInput = document.getElementById('password');
+const moviesBtn = document.getElementById('moviesBtn');
+const seriesBtn = document.getElementById('seriesBtn');
+const listPanel = document.getElementById('listPanel');
+const videoPlayer = document.getElementById('videoPlayer');
+const playerSource = document.getElementById('playerSource');
+const currentTitle = document.getElementById('currentTitle');
+const searchInput = document.getElementById('searchInput');
+const refreshBtn = document.getElementById('refreshBtn');
+
+let isLoggedIn = false;
+let currentMode = null;
+let allMovies = [], allSeries = [];
+
+/* --- SHOW/HIDE PAGES --- */
+function showLogin(){loginPage.style.display='flex';choicePage.style.display='none';playerPage.style.display='none'}
+function showChoice(){loginPage.style.display='none';choicePage.style.display='flex';playerPage.style.display='none'}
+function showPlayer(){loginPage.style.display='none';choicePage.style.display='none';playerPage.style.display='flex'}
+
+/* --- LOGIN LOGIC --- */
+loginBtn.addEventListener('click',()=>{
+  const user=usernameInput.value.trim();
+  const pass=passwordInput.value.trim();
+  if(user==='admin' && pass==='1234'){isLoggedIn=true;showChoice();loginError.textContent='';}
+  else{loginError.textContent='Invalid username or password';}
+});
+passwordInput.addEventListener('keyup',e=>{if(e.key==='Enter')loginBtn.click();});
+usernameInput.addEventListener('keyup',e=>{if(e.key==='Enter')passwordInput.focus();});
+
+/* --- FETCH UPDATE FILE FROM GOOGLE DRIVE --- */
+async function checkUpdate(){
+  overlay.style.display='flex';
+  try{
+    const url = `https://www.googleapis.com/drive/v3/files/${UPDATE_FOLDER}/export?mimeType=text/plain&key=${API_KEY}`;
+    const res = await fetch(url);
+    const txt = await res.text();
+    const firstLine = (txt.split('\n')[0]||'').trim().toLowerCase();
+    console.log('Update first line:', firstLine);
+    if(firstLine==='update true'){
+      overlay.querySelector('#overlayTitle').textContent='Server Under Maintenance';
+      overlay.querySelector('#overlayMsg').textContent='The server is currently under maintenance. Please contact the implementer.';
+      return false;
+    } else {
+      overlay.style.display='none';
+      showLogin();
+      return true;
+    }
+  } catch(e){
+    overlay.querySelector('#overlayTitle').textContent='Error fetching update file';
+    overlay.querySelector('#overlayMsg').textContent='Check your connection or contact the implementer.';
+    console.error('Update fetch error:',e);
+    return false;
+  }
+}
+
+/* --- FETCH DATA.JSON --- */
+async function fetchData(){
+  try{
+    const res = await fetch(DATA_URL,{cache:'no-cache'});
+    const data = await res.json();
+    allMovies = data.movies || [];
+    allSeries = data.series || [];
+  }catch(e){
+    console.error('Data fetch failed',e);
+    listPanel.innerHTML = 'Error loading media data';
+  }
+}
+
+/* --- RENDER MOVIES/SERIES --- */
+function renderList(list,type){
+  currentMode = type;
+  listPanel.innerHTML = '';
+  const backBtn = document.createElement('button');
+  backBtn.className='back-btn';
+  backBtn.textContent='← Back to Choice';
+  backBtn.onclick=()=>{ showChoice(); listPanel.innerHTML=''; };
+  listPanel.appendChild(backBtn);
+
+  if(!list.length){ listPanel.innerHTML+='<p style="color:#999">No items found</p>'; return; }
+
+  list.forEach(item=>{
+    const div=document.createElement('div'); div.className='item';
+    const fallback='data:image/svg+xml;base64,'+btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="480" height="270"><rect width="480" height="270" fill="#000"/><text x="50%" y="50%" fill="#999" font-size="20" text-anchor="middle" dy=".3em">No Thumbnail</text></svg>`);
+    div.innerHTML=`<img src="${item.thumbnail||fallback}" onerror="this.src='${fallback}'"><div class="item-title">${item.title}</div>`;
+    div.addEventListener('click',()=>{
+      if(type==='movies'){ playVideo(item.url,item.title); }
+      else{ expandSeries(item); }
+    });
+    listPanel.appendChild(div);
+  });
+}
+
+/* --- SERIES EXPAND --- */
+function expandSeries(series){
+  listPanel.innerHTML='';
+  const back=document.createElement('button'); back.className='back-btn'; back.textContent='← Back'; back.onclick=()=>renderList(allSeries,'series'); listPanel.appendChild(back);
+  const top=document.createElement('div'); top.style.marginBottom='10px'; top.innerHTML=`<div style="font-weight:800;margin-bottom:8px">${series.title}</div>`; listPanel.appendChild(top);
+  if(!series.seasons||!series.seasons.length){ const empty=document.createElement('div'); empty.style.color='#999'; empty.textContent='No seasons/episodes'; listPanel.appendChild(empty); return; }
+  series.seasons.forEach(season=>{
+    const sBlock=document.createElement('div'); sBlock.className='season-block';
+    const sTitle=document.createElement('div'); sTitle.className='season-title'; sTitle.textContent=season.name; sBlock.appendChild(sTitle);
+    season.episodes.forEach(ep=>{ const epEl=document.createElement('div'); epEl.className='episode'; epEl.textContent=ep.name; epEl.onclick=()=>playVideo(ep.url,`${series.title} — ${ep.name}`); sBlock.appendChild(epEl); });
+    listPanel.appendChild(sBlock);
+  });
+}
+
+/* --- VIDEO PLAY --- */
+function playVideo(url,title){
+  playerSource.src=url;
+  try{ videoPlayer.pause(); videoPlayer.currentTime=0; videoPlayer.load(); videoPlayer.play().catch(()=>{});}catch(e){}
+  currentTitle.textContent=title;
+}
+
+/* --- BUTTONS --- */
+moviesBtn.addEventListener('click',async()=>{
+  if(!isLoggedIn) return;
+  showPlayer();
+  await fetchData();
+  renderList(allMovies,'movies');
+});
+seriesBtn.addEventListener('click',async()=>{
+  if(!isLoggedIn) return;
+  showPlayer();
+  await fetchData();
+  renderList(allSeries,'series');
+});
+
+/* --- REFRESH BUTTON --- */
+refreshBtn.addEventListener('click', async ()=>{
+  refreshBtn.textContent='Refreshing...';
+  await fetchData();
+  if(currentMode==='movies') renderList(allMovies,'movies');
+  if(currentMode==='series') renderList(allSeries,'series');
+  refreshBtn.textContent='⟳ Refresh';
+});
+
+/* --- SEARCH --- */
+searchInput.addEventListener('input',e=>{
+  const q=e.target.value.trim().toLowerCase();
+  if(currentMode==='movies'){ const filtered=!q?allMovies:allMovies.filter(m=>m.title.toLowerCase().includes(q)); renderList(filtered,'movies'); }
+  if(currentMode==='series'){ const filtered=!q?allSeries:allSeries.filter(s=>s.title.toLowerCase().includes(q)); renderList(filtered,'series'); }
+});
+
+/* --- INIT --- */
+checkUpdate();
+</script>
+</body>
+</html>
